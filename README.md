@@ -1,114 +1,181 @@
 # NetCheck Android
 
-NetCheck adalah aplikasi dashboard Android untuk memantau ketersediaan dan kualitas koneksi internet secara terus-menerus selama aplikasi terbuka. Aplikasi dapat memeriksa jalur Wi-Fi, kabel LAN/Ethernet, dan data seluler/SIM secara terpisah, menjalankan speed test manual, serta menjaga layar tetap menyala untuk kebutuhan monitoring.
+NetCheck is a single-screen Android dashboard for continuously monitoring internet availability and connection quality while the app is open. It can inspect Wi-Fi, Ethernet/LAN, and cellular/SIM routes independently, run a manual speed test, display detailed public IP information, and keep the screen awake for dedicated monitoring use.
 
-Proyek dibangun menggunakan Kotlin, Jetpack Compose, dan Material 3.
+The project is built with Kotlin, Jetpack Compose, and Material 3.
 
-## Fitur
+## Features
 
-- Status internet utama: `ONLINE`, `OFFLINE`, atau sedang diperiksa.
-- Pemeriksaan koneksi otomatis dengan interval 5, 10, atau 30 detik.
-- Pemeriksaan setiap jenis koneksi secara terpisah:
+- Overall internet state: `ONLINE`, `OFFLINE`, or `CHECKING`.
+- Automatic connectivity checks every 5, 10, or 30 seconds.
+- Independent route checks for:
   - Wi-Fi.
-  - LAN/Ethernet, termasuk adaptor USB-C Ethernet yang dikenali Android.
-  - Data seluler dari kartu SIM.
-- Validasi internet nyata melalui koneksi HTTPS, bukan hanya mengecek apakah perangkat tersambung ke jaringan.
-- Fallback menggunakan validasi internet bawaan Android.
-- Speed test manual untuk:
-  - Kecepatan download.
-  - Kecepatan upload.
-  - Latensi.
-- Informasi jalur jaringan aktif dan alamat IP lokal.
-- Riwayat 12 pemeriksaan terakhir.
-- Pilihan agar layar tetap menyala selama aplikasi terbuka.
-- Bagian detail jaringan dan pengaturan monitor yang dapat dibuka atau ditutup.
-- Tampilan gelap yang sesuai untuk dashboard monitoring jangka panjang.
-- Dukungan edge-to-edge dengan safe area untuk status bar dan navigation bar.
+  - Ethernet/LAN, including Android-compatible USB-C Ethernet adapters.
+  - Cellular data from a SIM.
+- Real HTTPS validation instead of relying only on network attachment.
+- Android `NET_CAPABILITY_VALIDATED` fallback when probe services are blocked.
+- Manual speed test with:
+  - Download speed.
+  - Upload speed.
+  - Latency.
+- Active route and local IPv4 address.
+- Detailed public IP information:
+  - Public IPv4 or IPv6 address.
+  - IP version and network/CIDR when available.
+  - ASN and ISP/organization.
+  - Approximate city, region, country, postal code, and continent.
+  - Approximate latitude and longitude.
+  - Time zone and UTC offset.
+  - Country calling code, currency, and languages.
+- History of the last 12 checks.
+- Keep-screen-on option for monitoring displays.
+- Collapsible network, public IP, and monitor settings sections.
+- Dark dashboard theme.
+- Custom NetCheck adaptive launcher icon and branded splash screen.
+- Edge-to-edge layout with status bar and navigation bar safe areas.
 
-## Tampilan dan alur penggunaan
+## Using the app
 
-Saat aplikasi dibuka, monitor otomatis aktif dengan interval awal 5 detik.
+The automatic monitor uses a 30-second default interval when the app opens for the first time. A selected 5, 10, or 30-second interval is saved locally and restored when the app is opened again.
 
-1. Bagian atas menampilkan status internet utama.
-2. Kartu metrik menampilkan hasil download, upload, dan latensi terakhir.
-3. Ketuk **Detail jaringan** untuk melihat status Wi-Fi, LAN/Ethernet, data seluler/SIM, IP lokal, dan riwayat pemeriksaan.
-4. Centang atau hapus centang **Monitor otomatis** untuk mengaktifkan atau menghentikan pemeriksaan berkala.
-5. Ketuk bagian **Monitor otomatis** untuk membuka pilihan interval.
-6. Aktifkan **Layar selalu aktif** agar perangkat tidak masuk ke mode tidur selama aplikasi tampil.
-7. Tekan **Jalankan Speed Test** untuk mengukur koneksi secara manual.
+1. The status panel shows the overall internet state.
+2. The metric cards show the latest download, upload, and latency results.
+3. Tap **Network details** to inspect Wi-Fi, Ethernet/LAN, cellular/SIM, the active route, the local IP, and recent check history.
+4. Tap **Public IP details** to inspect the public address, provider, ASN, and approximate geolocation of the active route.
+5. Use the **Automatic monitor** checkbox to start or stop periodic checks.
+6. Tap the automatic monitor card to reveal the interval settings.
+7. Enable **Keep screen on** to prevent the display from sleeping while NetCheck is visible.
+8. Tap **Run Speed Test** to perform a manual measurement.
 
-## Arti status koneksi
+## Status meanings
 
-| Status | Arti |
+| Status | Meaning |
 |---|---|
-| `ONLINE` | Jalur berhasil mengakses server publik melalui HTTPS atau telah divalidasi oleh Android. |
-| `TANPA INTERNET` | Perangkat terhubung ke jaringan tersebut, tetapi akses internet tidak dapat divalidasi. |
-| `TIDAK TERHUBUNG` | Android tidak mendeteksi jalur jaringan tersebut sebagai jaringan yang tersedia. |
-| `MEMERIKSA…` | Proses validasi internet sedang berjalan. |
+| `ONLINE` | The route reached a public HTTPS service or was validated by Android. |
+| `NO INTERNET` | The device is attached to the route, but public internet access could not be validated. |
+| `NOT CONNECTED` | Android does not currently expose that network transport. |
+| `CHECKING…` | Connectivity validation is in progress. |
 
-Status utama dianggap `ONLINE` apabila setidaknya satu jalur jaringan yang tersedia berhasil mengakses internet. Status Wi-Fi, LAN, dan data seluler tetap ditampilkan secara terpisah pada detail jaringan.
+The overall state is `ONLINE` when at least one available route can access the internet. Wi-Fi, Ethernet, and cellular states remain visible independently under **Network details**.
 
-## Cara kerja pengecekan internet
+## How connectivity checks work
 
-`NetworkChecker` mengambil seluruh jaringan yang diketahui Android melalui `ConnectivityManager`, kemudian mengelompokkannya berdasarkan transport:
+`NetworkChecker` reads all networks exposed by Android's `ConnectivityManager` and groups them by transport:
 
-- `TRANSPORT_WIFI` untuk Wi-Fi.
-- `TRANSPORT_ETHERNET` untuk LAN/Ethernet.
-- `TRANSPORT_CELLULAR` untuk data seluler/SIM.
+- `TRANSPORT_WIFI` for Wi-Fi.
+- `TRANSPORT_ETHERNET` for Ethernet/LAN.
+- `TRANSPORT_CELLULAR` for cellular/SIM data.
 
-Setiap jalur diperiksa secara paralel. Request HTTPS diikat ke objek `Network` terkait menggunakan `Network.openConnection()`. Dengan cara ini, pemeriksaan Wi-Fi tidak secara tidak sengaja melewati data seluler, dan sebaliknya.
+Available routes are checked concurrently. Each HTTPS request is bound to its corresponding Android `Network` with `Network.openConnection()`. This prevents a Wi-Fi check from silently using cellular data, or a cellular check from silently using Wi-Fi.
 
-Endpoint pemeriksaan yang digunakan:
+The connectivity probes use:
 
 - `https://connectivitycheck.gstatic.com/generate_204`
 - `https://clients3.google.com/generate_204`
 - `https://www.cloudflare.com/cdn-cgi/trace`
 
-Jika endpoint tidak dapat diakses karena DNS, firewall, atau kebijakan jaringan, aplikasi menggunakan `NET_CAPABILITY_VALIDATED` dari Android sebagai fallback. Respons HTTP dari server publik membuktikan bahwa resolusi jaringan, koneksi, dan TLS berhasil dilakukan.
+If all probe endpoints are blocked by DNS, a firewall, or a managed network, NetCheck uses Android's `NET_CAPABILITY_VALIDATED` result as a fallback. An HTTP response from a public TLS endpoint proves that DNS/routing and TLS connectivity succeeded, even if the endpoint returns an application-level error response.
 
-### Latensi
+### Latency
 
-Latensi dihitung dari waktu membuka koneksi sampai server memberikan respons HTTP. Aplikasi mengutamakan latensi jalur aktif. Jika jalur aktif tidak memberikan hasil, aplikasi menggunakan hasil jalur online lain yang tersedia.
+Latency is measured from connection start until the public endpoint returns an HTTP response. The app prefers the active route's latency and falls back to another online route when necessary.
 
-### Speed test
+## Public IP details
 
-Speed test manual menggunakan layanan Cloudflare:
+NetCheck requests public IP metadata from:
 
-- Download sekitar 10 MB melalui endpoint `__down`.
-- Upload sekitar 2 MB melalui endpoint `__up`.
-- Total pemakaian data sekitar 12 MB untuk satu kali pengujian, di luar overhead jaringan.
+```text
+https://ipapi.co/json/
+```
 
-Speed test memakai jalur jaringan default/aktif Android. Jika ingin menguji data seluler secara khusus, nonaktifkan Wi-Fi dan LAN terlebih dahulu. Jika ingin menguji Wi-Fi atau LAN, pastikan jalur tersebut menjadi koneksi aktif.
+The request is bound to the active online Android route. Results are cached in memory for five minutes to avoid making a geolocation request during every automatic connectivity scan.
 
-## Catatan tentang data seluler/SIM
+Public IP geolocation is approximate. A city or coordinate may represent an ISP gateway, mobile carrier gateway, VPN exit node, or regional network hub rather than the physical device. Public IP details are informational and must not be treated as precise device location.
 
-Aplikasi tidak membaca nomor telepon, identitas SIM, operator, IMEI, atau informasi pribadi lainnya. Aplikasi hanya mendeteksi apakah Android menyediakan jaringan dengan transport data seluler dan apakah jaringan tersebut memiliki akses internet.
+If the public IP metadata service fails or is rate-limited:
 
-Pada beberapa perangkat, Android dapat menidurkan jaringan seluler saat Wi-Fi aktif. Dalam kondisi tersebut, data seluler mungkin tampil `TIDAK TERHUBUNG` walaupun kartu SIM terpasang dan paket data aktif. Aktifkan data seluler dan nonaktifkan Wi-Fi sementara jika ingin memastikan koneksi SIM secara khusus.
+- The connection can still be reported as online.
+- The public IP panel shows that details are unavailable.
+- A later automatic scan can try again.
 
-## Layar selalu aktif
+## Speed test
 
-Fitur ini menggunakan:
+The manual speed test uses Cloudflare's speed test service:
+
+- Approximately 10 MB downloaded through `__down`.
+- Approximately 2 MB uploaded through `__up`.
+- Approximately 12 MB total per run, excluding protocol overhead.
+
+The speed test uses Android's active/default route. To test a specific route:
+
+- For cellular: temporarily disable Wi-Fi and disconnect Ethernet.
+- For Wi-Fi: disconnect Ethernet and ensure Wi-Fi is the active route.
+- For Ethernet: connect Ethernet and verify Android selects it as the active route.
+
+Speed tests are never started automatically because they consume substantially more data than connectivity probes.
+
+## Cellular/SIM behavior
+
+NetCheck does not read a phone number, SIM identity, carrier account, IMEI, contacts, or other private telephony data. It only checks whether Android exposes a cellular network transport and whether that route has internet access.
+
+Some devices suspend the cellular network while Wi-Fi is active. In that situation, cellular may appear as `NOT CONNECTED` even when a SIM and mobile data plan are available. To verify the SIM route directly:
+
+1. Enable mobile data.
+2. Temporarily disable Wi-Fi.
+3. Disconnect Ethernet if present.
+4. Wait 5–10 seconds for Android to establish the cellular route.
+5. Open **Network details** and inspect **Cellular data / SIM**.
+
+## Keep screen on
+
+The feature uses:
 
 ```kotlin
 WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
 ```
 
-Efeknya hanya berlaku selama activity NetCheck tampil di layar. Fitur ini:
+It applies only while the NetCheck activity is visible.
 
-- Mencegah layar tidur karena timeout.
-- Tidak melewati PIN, pola, sidik jari, atau sistem keamanan lock screen.
-- Tidak membuat aplikasi menjadi foreground service.
-- Tidak menjamin aplikasi tetap berjalan jika pengguna menutup aplikasi atau sistem menghentikan proses.
+It does:
 
-Untuk perangkat kiosk atau monitoring permanen, pengembangan berikutnya dapat menambahkan Lock Task Mode, foreground service, auto-start setelah boot, dan kebijakan battery optimization sesuai kebutuhan deployment.
+- Prevent normal screen timeout while the app is open.
 
-## Persyaratan proyek
+It does not:
 
-| Komponen | Nilai |
+- Bypass a PIN, pattern, fingerprint, or lock-screen security.
+- Turn the app into a foreground service.
+- Keep monitoring after the app is closed.
+- Prevent Android from stopping the process under exceptional resource pressure.
+
+A dedicated kiosk deployment could later add Lock Task Mode, a foreground service, boot startup, and battery optimization guidance.
+
+## Branding assets
+
+The NetCheck mark combines a Wi-Fi signal with a network-health pulse. It uses the dashboard's mint green and cool blue colors on a dark navy background.
+
+Source and preview assets are stored under:
+
+```text
+assets/branding/
+├── netcheck-logo-source.png
+├── netcheck-icon-square.png
+└── netcheck-icon-round.png
+```
+
+Android resources include:
+
+- Adaptive icon foreground in `drawable-nodpi/ic_netcheck_foreground.png`.
+- Adaptive icon definitions in `mipmap-anydpi-v26`.
+- Legacy launcher icons for mdpi through xxxhdpi.
+- A pre-Android 12 splash drawable in `drawable/splash_screen.xml`.
+- Android 12+ splash attributes in `values-v31/themes.xml`.
+
+## Project requirements
+
+| Component | Version |
 |---|---|
-| Android Studio | Versi yang mendukung AGP 9.2.1 dan Android API 37 |
-| JDK | Java 11 atau lebih baru yang kompatibel dengan Android Gradle Plugin |
+| Android Studio | A version compatible with AGP 9.2.1 and Android API 37 |
+| JDK | Java 11 or a newer version supported by the configured AGP |
 | Compile SDK | 37 |
 | Target SDK | 36 |
 | Minimum SDK | 24 (Android 7.0) |
@@ -116,72 +183,76 @@ Untuk perangkat kiosk atau monitoring permanen, pengembangan berikutnya dapat me
 | Android Gradle Plugin | 9.2.1 |
 | Jetpack Compose BOM | 2026.02.01 |
 
-Pastikan **Android SDK Platform 37** sudah terpasang melalui Android Studio:
+Install **Android SDK Platform 37** before syncing:
 
-1. Buka **Tools > SDK Manager**.
-2. Pilih tab **SDK Platforms**.
-3. Aktifkan Android API 37.
-4. Terapkan instalasi.
+1. Open **Tools > SDK Manager** in Android Studio.
+2. Select **SDK Platforms**.
+3. Enable Android API 37.
+4. Apply the installation and sync the project again.
 
-## Menjalankan proyek
+## Running the project
 
-### Melalui Android Studio
+### Android Studio
 
-1. Clone atau buka folder proyek.
-2. Tunggu Gradle Sync selesai.
-3. Pilih emulator atau perangkat Android fisik.
-4. Tekan **Run**.
-5. Pastikan perangkat memiliki koneksi Wi-Fi, LAN, atau data seluler untuk melakukan pemeriksaan.
+1. Clone or open the project directory.
+2. Wait for Gradle Sync to complete.
+3. Select a physical Android device or emulator.
+4. Press **Run**.
+5. Provide a Wi-Fi, Ethernet, or cellular connection for validation.
 
-### Melalui terminal
+Testing physical network transports on a real device is recommended because emulator network behavior may differ.
 
-Build APK debug:
+### Command line
+
+Build a debug APK:
 
 ```bash
 ./gradlew assembleDebug
 ```
 
-APK akan tersedia di:
+The output is created at:
 
 ```text
-app/build/outputs/apk/debug/app-debug.apk
+app/build/outputs/apk/debug/NetCheck-v-1.0.apk
 ```
 
-Instal ke perangkat yang terhubung:
+APK output names are generated automatically from `versionName` using the format `NetCheck-v-<versionName>.apk`. For example, changing `versionName` to `1.1` produces `NetCheck-v-1.1.apk` without any additional build configuration changes.
+
+Install the debug app on a connected device:
 
 ```bash
 ./gradlew installDebug
 ```
 
-Menjalankan unit test:
+Run local unit tests:
 
 ```bash
 ./gradlew test
 ```
 
-Menjalankan instrumented test pada perangkat/emulator:
+Run instrumented tests:
 
 ```bash
 ./gradlew connectedAndroidTest
 ```
 
-## Permission
+## Permissions
 
-Permission yang digunakan pada `AndroidManifest.xml`:
+The manifest declares:
 
 ```xml
 <uses-permission android:name="android.permission.INTERNET" />
 <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 ```
 
-| Permission | Kegunaan |
+| Permission | Purpose |
 |---|---|
-| `INTERNET` | Mengakses endpoint validasi dan speed test. |
-| `ACCESS_NETWORK_STATE` | Membaca jaringan aktif, jenis transport, link properties, dan status validasi Android. |
+| `INTERNET` | Access connectivity probes, public IP metadata, and speed test services. |
+| `ACCESS_NETWORK_STATE` | Inspect active networks, transport types, link properties, and Android validation state. |
 
-Kedua permission merupakan permission normal dan tidak memerlukan dialog persetujuan runtime.
+Both are normal Android permissions and do not require a runtime permission dialog.
 
-## Struktur proyek
+## Project structure
 
 ```text
 NetCheck-android/
@@ -210,170 +281,179 @@ NetCheck-android/
 └── README.md
 ```
 
-## Komponen utama
+## Main components
 
 ### `MainActivity.kt`
 
-- Menyiapkan Jetpack Compose.
-- Menampilkan `NetCheckDashboard`.
-- Menambah atau menghapus `FLAG_KEEP_SCREEN_ON` berdasarkan pilihan pengguna.
+- Configures Jetpack Compose.
+- Displays `NetCheckDashboard`.
+- Adds or removes `FLAG_KEEP_SCREEN_ON` based on the user's setting.
 
 ### `NetworkChecker.kt`
 
-- Membaca jaringan melalui `ConnectivityManager`.
-- Mendeteksi Wi-Fi, Ethernet, dan data seluler.
-- Mengikat request validasi ke masing-masing jaringan.
-- Menggunakan beberapa endpoint dan validasi Android sebagai fallback.
-- Menghitung latensi, download Mbps, dan upload Mbps.
-- Menjalankan operasi jaringan pada `Dispatchers.IO`.
+- Reads Android networks through `ConnectivityManager`.
+- Detects Wi-Fi, Ethernet, and cellular transports.
+- Binds validation requests to specific Android routes.
+- Uses multiple probe endpoints plus Android validation fallback.
+- Fetches and caches public IP metadata for the active online route.
+- Calculates latency, download Mbps, and upload Mbps.
+- Performs blocking network work on `Dispatchers.IO`.
 
 ### `NetCheckDashboard.kt`
 
-- Menyimpan state tampilan Compose.
-- Menjalankan monitor otomatis menggunakan `LaunchedEffect`.
-- Menampilkan status, metrik, riwayat, pengaturan interval, dan speed test.
-- Menyediakan bagian expandable agar halaman tidak terlalu panjang.
-- Menambahkan padding navigation bar untuk tampilan edge-to-edge.
+- Owns the Compose UI state.
+- Runs the automatic monitor with `LaunchedEffect`.
+- Displays connectivity, speed, public IP, route, and history information.
+- Uses collapsible sections to keep the single-screen dashboard compact.
+- Applies navigation bar padding for edge-to-edge layouts.
 
-## Model status dan state
+## UI state
 
-State penting yang digunakan pada dashboard:
+Important dashboard state includes:
 
-- `automaticCheck`: mengaktifkan pemeriksaan berkala.
-- `intervalSeconds`: interval pemeriksaan 5, 10, atau 30 detik.
-- `status`: status umum `CHECKING`, `ONLINE`, atau `OFFLINE`.
-- `networkInfo`: informasi jalur aktif dan status setiap transport.
-- `latencyMs`: latensi terakhir.
-- `downloadMbps`: hasil download terakhir.
-- `uploadMbps`: hasil upload terakhir.
-- `history`: maksimal 12 hasil pemeriksaan terakhir.
-- `keepScreenOn`: pilihan agar layar tetap aktif.
+- `automaticCheck`: whether periodic checks are enabled.
+- `intervalSeconds`: persistent 5, 10, or 30-second scan interval, with 30 seconds as the default.
+- `status`: `CHECKING`, `ONLINE`, or `OFFLINE`.
+- `networkInfo`: active route and per-transport availability.
+- `publicIpInfo`: cached public IP and approximate network metadata.
+- `latencyMs`: latest latency.
+- `downloadMbps`: latest download result.
+- `uploadMbps`: latest upload result.
+- `history`: up to 12 recent check results.
+- `keepScreenOn`: screen timeout override.
 
-Sebagian state menggunakan `rememberSaveable`, sehingga pilihan dasar tetap dipertahankan saat terjadi perubahan konfigurasi seperti rotasi layar. Data tidak disimpan permanen setelah proses aplikasi dihentikan.
+Basic preferences use `rememberSaveable`, so they survive configuration changes such as rotation. The history and public IP data are in-memory only and are not persisted after the app process stops.
 
 ## Troubleshooting
 
-### Dependency membutuhkan compileSdk 37
+### A dependency requires compileSdk 37
 
-Contoh pesan:
+Example:
 
 ```text
 Dependency requires libraries and applications that depend on it to compile against version 37 or later
 ```
 
-Solusi:
+Check that:
 
-- Pastikan `compileSdk` menggunakan API 37.
-- Instal Android SDK Platform 37 melalui SDK Manager.
-- Lakukan Gradle Sync kembali.
+- `compileSdk` is set to API 37.
+- Android SDK Platform 37 is installed.
+- Gradle Sync completes after SDK installation.
 
-`targetSdk` tidak harus dinaikkan bersama `compileSdk` karena keduanya memiliki fungsi berbeda.
+`compileSdk` can be upgraded independently from `targetSdk` and `minSdk`.
 
-### Jaringan tersambung tetapi tampil tanpa internet
+### Connected but reported as no internet
 
-Periksa hal berikut:
+- Verify that a public HTTPS site opens in the browser.
+- Check the device date and time; incorrect time can break TLS.
+- Complete any captive portal or Wi-Fi login.
+- Review Private DNS, VPN, firewall, or ad-blocking settings.
+- Wait for the next automatic scan.
+- Toggle the affected network route off and on.
 
-- Pastikan perangkat dapat membuka situs HTTPS melalui browser.
-- Pastikan tanggal dan waktu perangkat benar agar TLS tidak gagal.
-- Periksa apakah jaringan memakai captive portal/login Wi-Fi.
-- Periksa DNS, VPN, firewall, ad blocker, atau Private DNS.
-- Tunggu sampai pemeriksaan otomatis berikutnya selesai.
-- Coba nonaktifkan lalu aktifkan kembali jalur jaringan terkait.
+NetCheck tries three public endpoints and Android validation to reduce false offline results.
 
-Aplikasi mencoba tiga endpoint publik dan memakai validasi Android sebagai fallback untuk mengurangi false offline.
+### Cellular is not visible while Wi-Fi is active
 
-### Data seluler tidak terdeteksi saat Wi-Fi aktif
+Android may suspend cellular networking while Wi-Fi is preferred. Disable Wi-Fi temporarily and wait for the mobile route to appear.
 
-Android dapat menonaktifkan jaringan seluler aktif ketika Wi-Fi digunakan. Untuk mengujinya:
+### Ethernet is not detected
 
-1. Pastikan mobile data aktif.
-2. Nonaktifkan Wi-Fi sementara.
-3. Tunggu 5–10 detik.
-4. Buka detail jaringan dan periksa status **Data seluler / SIM**.
+- Confirm that Android supports the adapter.
+- Inspect the cable, adapter, and link indicators.
+- Check whether Android itself displays an Ethernet connection.
+- Some USB-C adapters require external power.
 
-### LAN tidak terdeteksi
+### Public IP details are unavailable
 
-- Pastikan adaptor Ethernet didukung oleh perangkat Android.
-- Periksa kabel, adaptor, dan indikator link.
-- Pastikan Android menampilkan ikon atau status Ethernet.
-- Beberapa perangkat membutuhkan adaptor USB-C dengan daya eksternal.
+- Confirm that the route is online.
+- Check whether `ipapi.co` is blocked by DNS, VPN, or firewall policy.
+- Wait for a later automatic scan.
+- Remember that public IP metadata failure does not mean the internet route is offline.
 
-### Halaman tertutup navigation bar
+### The bottom of the page is hidden
 
-Dashboard menggunakan `navigationBarsPadding()` dan dapat digulir. Pastikan aplikasi yang terpasang merupakan build terbaru jika tombol bagian bawah masih tertutup.
+The dashboard is scrollable and uses `navigationBarsPadding()`. Install the latest build if the action button is still covered by Android's navigation bar.
 
-### Speed test gagal
+### Speed test fails
 
-- Pastikan status koneksi sudah online.
-- Periksa apakah domain `speed.cloudflare.com` diblokir jaringan.
-- Coba jalur jaringan lain.
-- Perhatikan bahwa satu speed test memakai sekitar 12 MB data.
+- Confirm that the overall state is online.
+- Check whether `speed.cloudflare.com` is blocked.
+- Try another network route.
+- Remember that each test consumes approximately 12 MB.
 
-## Privasi dan penggunaan data
+## Privacy and network services
 
-- Aplikasi tidak mengumpulkan nomor telepon, identitas SIM, kontak, lokasi, atau identitas perangkat.
-- Aplikasi tidak memiliki backend milik sendiri.
-- Request validasi dikirim langsung ke Google Connectivity Check dan Cloudflare.
-- Speed test dikirim langsung ke Cloudflare.
-- Penyedia endpoint dapat melihat informasi jaringan standar seperti alamat IP publik dan user-agent.
-- Riwayat pemeriksaan hanya disimpan sementara di memori aplikasi dan tidak dikirim ke server aplikasi.
+NetCheck does not collect phone numbers, SIM identities, contacts, precise GPS location, or device identifiers. It has no project-owned backend.
 
-Sebelum distribusi publik, tinjau kembali kebijakan privasi dan ketentuan penggunaan penyedia endpoint.
+Requests are sent directly to:
 
-## Keterbatasan saat ini
+- Google connectivity check endpoints.
+- Cloudflare connectivity and speed test endpoints.
+- ipapi.co for public IP metadata and approximate geolocation.
 
-- Monitoring berjalan saat layar Compose aktif; belum menggunakan foreground service.
-- Belum ada notifikasi ketika koneksi terputus.
-- Belum ada penyimpanan histori permanen.
-- Belum ada grafik kecepatan dari waktu ke waktu.
-- Speed test selalu menggunakan jalur default Android, belum dapat memilih jalur dari UI.
-- Belum ada auto-start setelah perangkat reboot.
-- Belum ada mode kiosk/Lock Task Mode.
-- Status SIM menunjukkan jaringan data seluler, bukan status fisik kartu atau informasi operator.
+These providers can receive standard request information such as the public IP address and user-agent. IP-based location can reveal an approximate region but is not precise GPS location.
 
-## Ide pengembangan berikutnya
+Connectivity history and public IP metadata remain in app memory and are not uploaded to a NetCheck-owned server. Review the third-party services' terms and privacy policies before public distribution.
 
-- Pilihan speed test khusus Wi-Fi, LAN, atau data seluler.
-- Foreground service untuk monitoring saat aplikasi berada di background.
-- Notifikasi ketika internet putus atau kembali normal.
-- Penyimpanan histori menggunakan Room.
-- Grafik uptime, downtime, latensi, dan speed test.
-- Export laporan CSV atau JSON.
-- Pengaturan endpoint pengecekan dari UI.
-- Mode kiosk dan auto-start setelah boot untuk perangkat monitoring khusus.
-- Threshold kualitas jaringan: baik, lambat, atau tidak stabil.
-- Dukungan tema terang dan gelap.
-- Lokalisasi string melalui resource `strings.xml`.
+## Current limitations
+
+- Monitoring runs while the Compose screen is active; there is no foreground service.
+- There are no outage or recovery notifications.
+- History is not stored permanently.
+- There are no long-term latency or speed charts.
+- The speed test uses Android's default route and cannot yet be assigned to a route from the UI.
+- There is no boot auto-start.
+- There is no kiosk or Lock Task Mode.
+- Cellular status represents the cellular data route, not physical SIM identity or carrier account state.
+- Public IP geolocation is approximate and depends on a third-party service.
+
+## Roadmap ideas
+
+- Route-selectable speed tests for Wi-Fi, Ethernet, and cellular.
+- Foreground service monitoring.
+- Connection loss and recovery notifications.
+- Room-based history storage.
+- Uptime, downtime, latency, and speed charts.
+- CSV or JSON report export.
+- Configurable probe endpoints.
+- Kiosk mode and boot startup.
+- Quality thresholds such as good, slow, or unstable.
+- Light and dark themes.
+- Move UI strings into localized Android resources.
 
 ## Testing
 
-Proyek menyediakan struktur test berikut:
+The repository contains test source sets for:
 
-- Unit test di `app/src/test`.
-- Instrumented/UI test di `app/src/androidTest`.
+- Local unit tests under `app/src/test`.
+- Instrumented/UI tests under `app/src/androidTest`.
 
-Area yang disarankan untuk diuji:
+Recommended coverage:
 
-- Perhitungan Mbps.
-- Pemilihan jaringan berdasarkan transport.
-- Perubahan status online/offline.
-- Batas maksimal 12 item riwayat.
-- Perubahan interval monitor.
-- State expandable/collapsible.
-- Perilaku layar selalu aktif.
-- Layout pada ukuran layar dan mode navigasi Android yang berbeda.
+- Mbps calculation.
+- Transport selection.
+- Online/offline transitions.
+- Public IP parsing and cache behavior.
+- The 12-entry history limit.
+- Monitor interval changes.
+- Expand/collapse state.
+- Keep-screen-on behavior.
+- Different screen sizes and Android navigation modes.
+- Wi-Fi, Ethernet, and cellular behavior on physical devices.
 
-## Kontribusi
+## Contribution guidelines
 
-Saat menambahkan fitur:
+When extending the project:
 
-1. Jaga operasi jaringan tetap berada di `Dispatchers.IO`.
-2. Hindari request besar pada monitor otomatis.
-3. Gunakan speed test hanya melalui tindakan pengguna.
-4. Pastikan setiap request memiliki timeout.
-5. Pertahankan pemeriksaan per transport agar hasil tidak berpindah jalur secara tidak sengaja.
-6. Uji pada perangkat fisik karena perilaku Wi-Fi, Ethernet, dan data seluler dapat berbeda antar produsen.
+1. Keep blocking network operations on `Dispatchers.IO`.
+2. Keep automatic probes small.
+3. Start high-data speed tests only after explicit user action.
+4. Give every request a finite timeout.
+5. Preserve per-transport route binding.
+6. Cache third-party metadata appropriately.
+7. Test on physical devices from multiple manufacturers when possible.
 
-## Lisensi
+## License
 
-Lisensi proyek belum ditentukan. Tambahkan file `LICENSE` sebelum proyek didistribusikan atau menerima kontribusi publik.
+No license has been selected yet. Add a `LICENSE` file before public distribution or accepting external contributions.

@@ -1,5 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 
-  <style name="Theme.NetCheck" parent="android:Theme.Material.Light.NoActionBar" />
+  <style name="Theme.NetCheck" parent="android:style/Theme.Material.NoActionBar">
+    <item name="android:windowBackground">@drawable/splash_screen</item>
+    <item name="android:colorAccent">@color/netcheck_mint</item>
+    <item name="android:statusBarColor">@color/netcheck_navy</item>
+    <item name="android:navigationBarColor">@color/netcheck_navy</item>
+    <item name="android:windowLightStatusBar">false</item>
+  </style>
 </resources>

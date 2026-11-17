@@ -1,5 +1,6 @@
 package com.pilkupil.netcheck.ui
 
+import android.content.Context
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -53,6 +54,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.pilkupil.netcheck.network.NetworkChecker
 import com.pilkupil.netcheck.network.NetworkInfo
+import com.pilkupil.netcheck.network.PublicIpInfo
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
@@ -64,6 +66,10 @@ private val Danger = Color(0xFFFF6B6B)
 private val Muted = Color(0xFF91A0B8)
 private val CardColor = Color(0xFF162033)
 private val CardBorder = Color(0xFF25334A)
+private const val PreferencesName = "netcheck_preferences"
+private const val CheckIntervalKey = "check_interval_seconds"
+private const val DefaultCheckIntervalSeconds = 30
+private val SupportedCheckIntervals = setOf(5, 10, 30)
 
 private enum class ConnectionStatus { CHECKING, ONLINE, OFFLINE }
 
@@ -74,24 +80,36 @@ fun NetCheckDashboard(
 ) {
   val context = LocalContext.current
   val checker = remember { NetworkChecker(context.applicationContext) }
+  val preferences = remember {
+    context.applicationContext.getSharedPreferences(PreferencesName, Context.MODE_PRIVATE)
+  }
   var automaticCheck by rememberSaveable { mutableStateOf(true) }
-  var intervalSeconds by rememberSaveable { mutableStateOf(5) }
+  var intervalSeconds by rememberSaveable {
+    mutableStateOf(
+      preferences.getInt(CheckIntervalKey, DefaultCheckIntervalSeconds)
+        .takeIf(SupportedCheckIntervals::contains)
+        ?: DefaultCheckIntervalSeconds
+    )
+  }
   var status by remember { mutableStateOf(ConnectionStatus.CHECKING) }
   var networkInfo by remember { mutableStateOf(NetworkInfo()) }
   var latencyMs by rememberSaveable { mutableStateOf<Long?>(null) }
   var downloadMbps by rememberSaveable { mutableStateOf<Double?>(null) }
   var uploadMbps by rememberSaveable { mutableStateOf<Double?>(null) }
-  var lastChecked by rememberSaveable { mutableStateOf("Belum diperiksa") }
+  var lastChecked by rememberSaveable { mutableStateOf("Not checked yet") }
   var isSpeedTesting by remember { mutableStateOf(false) }
   var message by remember { mutableStateOf<String?>(null) }
   var history by remember { mutableStateOf<List<Boolean>>(emptyList()) }
+  var publicIpInfo by remember { mutableStateOf<PublicIpInfo?>(null) }
   var networkDetailsExpanded by rememberSaveable { mutableStateOf(false) }
+  var publicIpExpanded by rememberSaveable { mutableStateOf(false) }
   var monitorSettingsExpanded by rememberSaveable { mutableStateOf(false) }
 
   suspend fun refreshConnection() {
     status = ConnectionStatus.CHECKING
     val result = checker.checkConnectivity()
     networkInfo = result.networkInfo
+    publicIpInfo = result.publicIpInfo
     latencyMs = result.latencyMs
     status = if (result.isOnline) ConnectionStatus.ONLINE else ConnectionStatus.OFFLINE
     lastChecked = currentTime()
@@ -151,7 +169,7 @@ fun NetCheckDashboard(
           )
           MetricCard(
             modifier = Modifier.weight(1f),
-            label = "LATENSI",
+            label = "LATENCY",
             value = latencyMs?.toString() ?: "—",
             unit = "ms"
           )
@@ -168,9 +186,9 @@ fun NetCheckDashboard(
             verticalAlignment = Alignment.CenterVertically
           ) {
             Column(modifier = Modifier.weight(1f)) {
-              Text("Detail jaringan", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+              Text("Network details", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
               Text(
-                "Aktif: ${networkInfo.connectionType}",
+                "Active: ${networkInfo.connectionType}",
                 color = Muted,
                 fontSize = 12.sp,
                 maxLines = 1
@@ -181,9 +199,9 @@ fun NetCheckDashboard(
 
           if (networkDetailsExpanded) {
             Spacer(Modifier.height(16.dp))
-            InfoRow("Jalur aktif", networkInfo.connectionType)
+            InfoRow("Active route", networkInfo.connectionType)
             Spacer(Modifier.height(10.dp))
-            InfoRow("Alamat IP lokal", networkInfo.localIp)
+            InfoRow("Local IP address", networkInfo.localIp)
             Spacer(Modifier.height(16.dp))
             TransportStatusRow(
               label = "Wi-Fi",
@@ -198,12 +216,49 @@ fun NetCheckDashboard(
             )
             Spacer(Modifier.height(10.dp))
             TransportStatusRow(
-              label = "Data seluler / SIM",
+              label = "Cellular data / SIM",
               connected = networkInfo.cellularConnected,
               internetAvailable = networkInfo.cellularInternet
             )
             Spacer(Modifier.height(14.dp))
             HistoryBar(history)
+          }
+        }
+      }
+
+      item {
+        DashboardCard {
+          Row(
+            modifier = Modifier
+              .fillMaxWidth()
+              .clickable { publicIpExpanded = !publicIpExpanded },
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+          ) {
+            Column(modifier = Modifier.weight(1f)) {
+              Text("Public IP details", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+              Text(
+                publicIpInfo?.ip ?: if (status == ConnectionStatus.CHECKING) "Fetching details…" else "Unavailable",
+                color = Muted,
+                fontSize = 12.sp,
+                maxLines = 1
+              )
+            }
+            ExpandIndicator(publicIpExpanded)
+          }
+
+          if (publicIpExpanded) {
+            Spacer(Modifier.height(16.dp))
+            val info = publicIpInfo
+            if (info == null) {
+              Text(
+                "Public IP information is unavailable. Check the connection or try again after the next automatic scan.",
+                color = Muted,
+                fontSize = 13.sp
+              )
+            } else {
+              PublicIpDetails(info)
+            }
           }
         }
       }
@@ -222,12 +277,12 @@ fun NetCheckDashboard(
               colors = CheckboxDefaults.colors(checkedColor = Accent, checkmarkColor = Color(0xFF07130E))
             )
             Column(modifier = Modifier.weight(1f)) {
-              Text("Monitor otomatis", fontWeight = FontWeight.Bold)
-              Text("Periksa akses internet berkala", color = Muted, fontSize = 13.sp)
+              Text("Automatic monitor", fontWeight = FontWeight.Bold)
+              Text("Check internet access periodically", color = Muted, fontSize = 13.sp)
             }
             Column(horizontalAlignment = Alignment.End) {
               Text(
-                if (automaticCheck) "AKTIF" else "MATI",
+                if (automaticCheck) "ACTIVE" else "OFF",
                 color = if (automaticCheck) Accent else Muted,
                 fontSize = 10.sp,
                 fontWeight = FontWeight.Bold
@@ -238,7 +293,7 @@ fun NetCheckDashboard(
 
           if (monitorSettingsExpanded) {
             Spacer(Modifier.height(14.dp))
-            Text("Interval pengecekan", color = Muted, fontSize = 12.sp)
+            Text("Check interval", color = Muted, fontSize = 12.sp)
             Spacer(Modifier.height(8.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
               listOf(5, 10, 30).forEach { seconds ->
@@ -246,7 +301,10 @@ fun NetCheckDashboard(
                   seconds = seconds,
                   selected = intervalSeconds == seconds,
                   enabled = automaticCheck,
-                  onClick = { intervalSeconds = seconds },
+                  onClick = {
+                    intervalSeconds = seconds
+                    preferences.edit().putInt(CheckIntervalKey, seconds).apply()
+                  },
                   modifier = Modifier.weight(1f)
                 )
               }
@@ -263,9 +321,9 @@ fun NetCheckDashboard(
             verticalAlignment = Alignment.CenterVertically
           ) {
             Column(modifier = Modifier.weight(1f)) {
-              Text("Layar selalu aktif", fontWeight = FontWeight.Bold)
+              Text("Keep screen on", fontWeight = FontWeight.Bold)
               Text(
-                if (keepScreenOn) "Layar tidak akan tidur selama aplikasi terbuka" else "Ikuti waktu tidur perangkat",
+                if (keepScreenOn) "The screen stays awake while the app is open" else "Use the device sleep timeout",
                 color = Muted,
                 fontSize = 13.sp
               )
@@ -307,13 +365,13 @@ fun NetCheckDashboard(
               strokeWidth = 2.dp,
               color = Color(0xFF07130E)
             )
-            Text("  Mengukur kecepatan…", fontWeight = FontWeight.Bold)
+            Text("  Measuring speed…", fontWeight = FontWeight.Bold)
           } else {
-            Text("JALANKAN SPEED TEST", fontWeight = FontWeight.Black, letterSpacing = 0.5.sp)
+            Text("RUN SPEED TEST", fontWeight = FontWeight.Black, letterSpacing = 0.5.sp)
           }
         }
         Text(
-          text = message ?: "Tes manual menggunakan sekitar 12 MB data.",
+          text = message ?: "A manual test uses approximately 12 MB of data.",
           modifier = Modifier
             .fillMaxWidth()
             .padding(top = 8.dp),
@@ -333,12 +391,13 @@ fun NetCheckDashboard(
       uploadMbps = result.uploadMbps
       latencyMs = result.latencyMs
       networkInfo = result.networkInfo
+      publicIpInfo = result.publicIpInfo
       status = ConnectionStatus.ONLINE
       lastChecked = currentTime()
       history = (history + true).takeLast(12)
     } catch (error: Exception) {
       if (error is CancellationException) throw error
-      message = error.message ?: "Speed test gagal. Silakan coba lagi."
+      message = error.message ?: "Speed test failed. Please try again."
       refreshConnection()
     } finally {
       isSpeedTesting = false
@@ -356,7 +415,7 @@ private fun StatusHero(status: ConnectionStatus, lastChecked: String) {
   val label = when (status) {
     ConnectionStatus.ONLINE -> "INTERNET ONLINE"
     ConnectionStatus.OFFLINE -> "INTERNET OFFLINE"
-    ConnectionStatus.CHECKING -> "MEMERIKSA…"
+    ConnectionStatus.CHECKING -> "CHECKING…"
   }
 
   Card(
@@ -387,7 +446,7 @@ private fun StatusHero(status: ConnectionStatus, lastChecked: String) {
       }
       Spacer(Modifier.height(16.dp))
       Text(label, color = color, fontSize = 21.sp, fontWeight = FontWeight.Black, letterSpacing = 0.8.sp)
-      Text("Terakhir diperiksa: $lastChecked", color = Muted, fontSize = 12.sp)
+      Text("Last checked: $lastChecked", color = Muted, fontSize = 12.sp)
     }
   }
 }
@@ -441,8 +500,60 @@ private fun ExpandIndicator(expanded: Boolean) {
 @Composable
 private fun InfoRow(label: String, value: String) {
   Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-    Text(label, color = Muted, fontSize = 13.sp)
-    Text(value, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+    Text(
+      text = label,
+      modifier = Modifier.weight(0.42f),
+      color = Muted,
+      fontSize = 13.sp
+    )
+    Text(
+      text = value,
+      modifier = Modifier.weight(0.58f),
+      fontWeight = FontWeight.SemiBold,
+      fontSize = 13.sp,
+      textAlign = TextAlign.End
+    )
+  }
+}
+
+@Composable
+private fun PublicIpDetails(info: PublicIpInfo) {
+  val location = listOfNotNull(info.city, info.region, info.countryName)
+    .distinct()
+    .joinToString(", ")
+  val coordinates = listOfNotNull(info.latitude, info.longitude).joinToString(", ")
+  val timezone = listOfNotNull(info.timezone, info.utcOffset).joinToString(" • ")
+  val country = listOfNotNull(info.countryName, info.countryCode).joinToString(" • ")
+  val currency = listOfNotNull(info.currency, info.currencyName).joinToString(" • ")
+  val details = buildList {
+    add("Public IP" to info.ip)
+    info.version?.let { add("IP version" to it) }
+    info.network?.let { add("Network / CIDR" to it) }
+    info.asn?.let { add("ASN" to it) }
+    info.organization?.let { add("ISP / organization" to it) }
+    location.takeIf { it.isNotBlank() }?.let { add("Approx. location" to it) }
+    info.regionCode?.let { add("Region code" to it) }
+    info.postalCode?.let { add("Postal code" to it) }
+    country.takeIf { it.isNotBlank() }?.let { add("Country" to it) }
+    info.continentCode?.let { add("Continent code" to it) }
+    coordinates.takeIf { it.isNotBlank() }?.let { add("Coordinates" to it) }
+    timezone.takeIf { it.isNotBlank() }?.let { add("Time zone" to it) }
+    info.callingCode?.let { add("Calling code" to it) }
+    currency.takeIf { it.isNotBlank() }?.let { add("Currency" to it) }
+    info.languages?.let { add("Languages" to it) }
+  }
+
+  Column {
+    details.forEachIndexed { index, (label, value) ->
+      if (index > 0) Spacer(Modifier.height(10.dp))
+      InfoRow(label, value)
+    }
+    Spacer(Modifier.height(14.dp))
+    Text(
+      "Location data is an approximate IP-based estimate and may point to the ISP gateway rather than the device.",
+      color = Muted,
+      fontSize = 11.sp
+    )
   }
 }
 
@@ -454,8 +565,8 @@ private fun TransportStatusRow(
 ) {
   val status = when {
     internetAvailable -> "ONLINE"
-    connected -> "TANPA INTERNET"
-    else -> "TIDAK TERHUBUNG"
+    connected -> "NO INTERNET"
+    else -> "NOT CONNECTED"
   }
   val statusColor = when {
     internetAvailable -> Accent
@@ -483,7 +594,7 @@ private fun TransportStatusRow(
 private fun HistoryBar(history: List<Boolean>) {
   Column {
     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-      Text("12 pemeriksaan terakhir", color = Muted, fontSize = 11.sp)
+      Text("Last 12 checks", color = Muted, fontSize = 11.sp)
       Text("${history.count { it }}/${history.size} online", color = Muted, fontSize = 11.sp)
     }
     Spacer(Modifier.height(8.dp))
@@ -531,7 +642,7 @@ private fun IntervalButton(
     ),
     contentPadding = PaddingValues(0.dp)
   ) {
-    Text("$seconds detik", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+    Text("$seconds sec", fontSize = 12.sp, fontWeight = FontWeight.Bold)
   }
 }
 
