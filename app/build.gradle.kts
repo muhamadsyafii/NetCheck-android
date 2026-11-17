@@ -34,6 +34,16 @@ android {
   }
 }
 
+androidComponents {
+  onVariants { variant ->
+    variant.outputs.forEach { output ->
+      output.outputFileName.set(
+        output.versionName.map { versionName -> "NetCheck-v-$versionName.apk" }
+      )
+    }
+  }
+}
+
 dependencies {
   implementation(platform(libs.androidx.compose.bom))
   implementation(libs.androidx.activity.compose)
